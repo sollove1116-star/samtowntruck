@@ -114,6 +114,20 @@ h1 svg{width:38px;height:38px;flex:none;color:var(--lit)}
 </svg></div>
   </div>
 </div>
+<script>
+/* 시작 화면: 아래 메인 스크립트에 오류가 있어도 3초 뒤 반드시 닫혀요 */
+(function(){
+  var sp=document.getElementById("splash"),done=false;
+  var reduce=window.matchMedia&&matchMedia("(prefers-reduced-motion:reduce)").matches;
+  function close(){if(done)return;done=true;sp.classList.add("hide");setTimeout(function(){sp.remove()},500)}
+  sp.addEventListener("click",close);
+  setTimeout(close,reduce?1500:3000);
+  window.addEventListener("error",function(){
+    var m=document.getElementById("msg");
+    if(m){m.hidden=false;m.textContent="화면을 불러오지 못했어요. 관리자에게 알려주세요. (index.html 위쪽의 주소 입력 칸을 확인해 주세요)"}
+  });
+})();
+</script>
 <main>
   <h1><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h26v22H4z"/><path d="M30 20h9l5 7v7H30"/><path d="M34 22v5h8"/><path d="M9 18h12v6H9z"/><circle cx="13" cy="36" r="4" fill="#FCF9F0"/><circle cx="36" cy="36" r="4" fill="#FCF9F0"/></svg>오늘의 푸드트럭</h1>
   <p class="sub">샘마을대우한양아파트 주민들이 함께 채워가는 푸드트럭 소식이에요.</p>
@@ -126,9 +140,8 @@ h1 svg{width:38px;height:38px;flex:none;color:var(--lit)}
 
 <script>
 /* ===== 여기만 고치세요 ===== */
-const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRKNt-Nacw9SwbqurM7ktSvNIXinJxvpZGYKef73KTRc8N4vRDcFYFzqOSJscOtmmCTL64wuOlNHoyz/pub?gid=1861893817&single=true&output=csv";   // 구글 시트 "웹에 게시" CSV 주소
-const FORM_URL      = "https://forms.gle/kntVJYv4Q3FnXCqH6
-";   // 구글 폼 주소 (비우면 버튼이 숨겨져요)
+const SHEET_CSV_URL = "";   // 구글 시트 "웹에 게시" CSV 주소
+const FORM_URL      = "";   // 구글 폼 주소 (비우면 버튼이 숨겨져요)
 /* ========================== */
 
 const DAYS = ["월","화","수","목","금","토","일"];
@@ -145,7 +158,7 @@ const DEMO = [
 
 const $ = id => document.getElementById(id);
 const todayIdx = (new Date().getDay()+6)%7;
-let rows = [], failed = false, chips = [];
+let rows = [], failed = false, loading = true, cur = todayIdx, chips = [];
 
 function parseCSV(text){
   const out=[];let row=[],cell="",q=false;
@@ -286,42 +299,42 @@ function buildWeek(){
 }
 
 function showDay(i){
+  cur=i;
   chips.forEach((c,j)=>{c.classList.toggle("sel",j===i);c.setAttribute("aria-pressed",String(j===i))});
   $("title").textContent=DAYS[i]+"요일"+(i===todayIdx?" · 오늘":"");
   const lot=$("lot");lot.replaceChildren();
   const list=rows.filter(r=>r.days.includes(DAYS[i]));
   list.slice().sort((a,b)=>(a.time||"").localeCompare(b.time||"")).forEach(t=>lot.appendChild(card(t)));
   if(!failed){
-    $("msg").hidden=list.length>0;
-    $("msg").textContent="이 요일에는 등록된 트럭이 없어요. 알고 계시면 알려주세요.";
+    if(loading){$("msg").hidden=false;$("msg").textContent="소식을 불러오는 중이에요…"}
+    else{
+      $("msg").hidden=list.length>0;
+      $("msg").textContent="이 요일에는 등록된 트럭이 없어요. 알고 계시면 알려주세요.";
+    }
   }
 }
 
 async function load(){
   if(!SHEET_CSV_URL){rows=DEMO}
   else{
+    buildWeek();showDay(cur);
+    const ctl=new AbortController();
+    const timer=setTimeout(()=>ctl.abort(),10000);
     try{
-      const res=await fetch(SHEET_CSV_URL+(SHEET_CSV_URL.includes("?")?"&":"?")+"t="+Date.now());
+      const res=await fetch(SHEET_CSV_URL+(SHEET_CSV_URL.includes("?")?"&":"?")+"t="+Date.now(),{signal:ctl.signal});
       if(!res.ok)throw new Error(res.status);
       rows=toRows(parseCSV(await res.text()));
     }catch(e){
       rows=[];failed=true;
       $("msg").hidden=false;$("msg").textContent="소식을 불러오지 못했어요. 잠시 후 다시 열어주세요.";
-    }
+    }finally{clearTimeout(timer)}
   }
-  buildWeek();showDay(todayIdx);
+  loading=false;
+  buildWeek();showDay(cur);
 }
 
 if(FORM_URL){$("add").href=FORM_URL;$("add").hidden=false}
 load();
-(function(){
-  const sp=document.getElementById("splash");
-  const reduce=window.matchMedia&&matchMedia("(prefers-reduced-motion:reduce)").matches;
-  let done=false;
-  function close(){if(done)return;done=true;sp.classList.add("hide");setTimeout(()=>sp.remove(),500)}
-  sp.addEventListener("click",close);
-  setTimeout(close,reduce?1500:3000);
-})();
 </script>
 </body>
 </html>
